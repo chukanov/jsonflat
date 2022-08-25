@@ -1,9 +1,12 @@
 package io.github.jsonflat.model;
 
 import lombok.AllArgsConstructor;
-import lombok.Value;
+import lombok.Data;
+import lombok.NoArgsConstructor;
 
-import java.io.Serializable;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.stream.Collectors;
 
 /**
  * Center of Financial Technologies
@@ -22,9 +25,21 @@ import java.io.Serializable;
  * @author Evgeniy Chukanov
  */
 
-@Value
+@Data
+@NoArgsConstructor
 @AllArgsConstructor
-public class RowValue implements Serializable {
-	String name;
-	Cell cell;
+public class ColumnResult {
+	private String name;
+	private List<Value> values = new ArrayList<>();
+
+	public List<Cell> toCells() {
+		return values.stream().map(v -> new Cell(name, v)).collect(Collectors.toList());
+	}
+
+	public boolean isEmpty() {
+		for (Value c : values) {
+			if (!c.isEmpty()) return false;
+		}
+		return true;
+	}
 }

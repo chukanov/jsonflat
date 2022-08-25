@@ -1,7 +1,6 @@
 package io.github.jsonflat.model;
 
-import lombok.AllArgsConstructor;
-import lombok.Value;
+import java.io.Serializable;
 
 /**
  * Center of Financial Technologies
@@ -20,18 +19,7 @@ import lombok.Value;
  * @author Evgeniy Chukanov
  */
 
-@AllArgsConstructor
-@Value
-public class NullCell implements Cell {
-	private boolean required;
-
-	@Override
-	public String toString() {
-		return "-";
-	}
-
-	@Override
-	public boolean isEmpty() {
-		return true;
-	}
+public interface Value extends Serializable {
+	boolean isEmpty();
+	boolean isRequired();
 }

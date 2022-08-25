@@ -1,7 +1,6 @@
 package io.github.jsonflat.model;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import lombok.Value;
+import lombok.AllArgsConstructor;
 
 /**
  * Center of Financial Technologies
@@ -20,18 +19,18 @@ import lombok.Value;
  * @author Evgeniy Chukanov
  */
 
-@Value
-public class JsonCell implements Cell {
-	JsonNode value;
-	boolean required;
+@AllArgsConstructor
+@lombok.Value
+public class NullValue implements Value {
+	private boolean required;
 
-	public JsonCell(JsonNode value, boolean required) {
-		this.required = required;
-		this.value = value;
+	@Override
+	public String toString() {
+		return "-";
 	}
 
 	@Override
 	public boolean isEmpty() {
-		return value == null || value.isNull();
+		return true;
 	}
 }

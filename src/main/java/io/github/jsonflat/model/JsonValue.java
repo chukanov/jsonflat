@@ -1,12 +1,6 @@
 package io.github.jsonflat.model;
 
-import lombok.AllArgsConstructor;
-import lombok.Data;
-import lombok.NoArgsConstructor;
-
-import java.util.ArrayList;
-import java.util.List;
-import java.util.stream.Collectors;
+import com.fasterxml.jackson.databind.JsonNode;
 
 /**
  * Center of Financial Technologies
@@ -25,21 +19,18 @@ import java.util.stream.Collectors;
  * @author Evgeniy Chukanov
  */
 
-@Data
-@NoArgsConstructor
-@AllArgsConstructor
-public class Column {
-	private String name;
-	private List<Cell> cells = new ArrayList<>();
+@lombok.Value
+public class JsonValue implements Value {
+	JsonNode value;
+	boolean required;
 
-	public List<RowValue> toRowValues() {
-		return cells.stream().map(cell -> new RowValue(name, cell)).collect(Collectors.toList());
+	public JsonValue(JsonNode value, boolean required) {
+		this.required = required;
+		this.value = value;
 	}
 
+	@Override
 	public boolean isEmpty() {
-		for (Cell c : cells) {
-			if (!c.isEmpty()) return false;
-		}
-		return true;
+		return value == null || value.isNull();
 	}
 }

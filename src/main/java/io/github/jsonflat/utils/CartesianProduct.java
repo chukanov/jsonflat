@@ -25,24 +25,25 @@ import static java.util.stream.Collectors.toList;
 public class CartesianProduct {
 
 	public static <T> List<List<T>> cartesianProduct(List<? extends List<? extends T>> lists) {
-		lists = lists.stream().filter(list -> !list.isEmpty()).collect(toList());
 		List<List<T>> product = new ArrayList<>(lists.size() * 2);
 		for (List<? extends T> list : lists) {
-			List<List<T>> newProduct = new ArrayList<>(list.size() * 2);
-			for (T listElement : list) {
-				if (product.isEmpty()) {
-					List<T> newProductList = new ArrayList<>();
-					newProductList.add(listElement);
-					newProduct.add(newProductList);
-				} else {
-					for (List<T> productList : product) {
-						List<T> newProductList = new ArrayList<>(productList);
+			if (!list.isEmpty()) {
+				List<List<T>> newProduct = new ArrayList<>(list.size() * 2);
+				for (T listElement : list) {
+					if (product.isEmpty()) {
+						List<T> newProductList = new ArrayList<>();
 						newProductList.add(listElement);
 						newProduct.add(newProductList);
+					} else {
+						for (List<T> productList : product) {
+							List<T> newProductList = new ArrayList<>(productList);
+							newProductList.add(listElement);
+							newProduct.add(newProductList);
+						}
 					}
 				}
+				product = newProduct;
 			}
-			product = newProduct;
 		}
 		return product;
 	}

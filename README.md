@@ -2,8 +2,9 @@
 Модуль сделан для преобразования json-логов в "плоский" табличный вид.
 Также в библиотеке содежится консольная утилита для быстрой трансформации json файлов.
  
-##Пример работы jflat
-###test.json
+## Пример работы jsonflat
+
+**test.json**
 ```json
 {
   "store": {
@@ -40,10 +41,10 @@
       "price": 19.95
     }
   },
-  "expensive": 10,
+  "expensive": 10
 }
 ```
-###Результат
+**Результат**
 ```json lines
 {"store_book_category":"reference","store_book_author":"Nigel Rees","store_book_title":"Sayings of the Century","store_book_price":8.95,"store_bicycle_color":"red","store_bicycle_price":19.95,"expensive":10}
 {"store_book_category":"fiction","store_book_author":"Evelyn Waugh","store_book_title":"Sword of Honour","store_book_price":12.99,"store_bicycle_color":"red","store_bicycle_price":19.95,"expensive":10}
@@ -61,7 +62,7 @@ repositories {
     }
 }
 dependencies {
-    compile 'ru.ftc.utils:jflat:version'
+    compile 'ru.ftc.utils:jsonflat:version'
 }
 ```
 
@@ -80,7 +81,8 @@ dependencies {
 то результатом работы парсера будут документы: 
 ```json lines
 {"store_book_title":"Sayings of the Century","store_book_price":8.95,"store_bicycle_color":"red","store_bicycle_price":19.95}
-{"store_book_title":"Sword of Honour","store_book_price":12.99,"store_bicycle_color":"red","store_bicycle_price":19.95}, {"store_book_title":"Moby Dick","store_book_price":8.99,"store_bicycle_color":"red","store_bicycle_price":19.95}
+{"store_book_title":"Sword of Honour","store_book_price":12.99,"store_bicycle_color":"red","store_bicycle_price":19.95} 
+{"store_book_title":"Moby Dick","store_book_price":8.99,"store_bicycle_color":"red","store_bicycle_price":19.95}
 {"store_book_title":"The Lord of the Rings","store_book_price":22.99,"store_bicycle_color":"red","store_bicycle_price":19.95}
 ```
 Java код реализующий такое преобразование:
@@ -119,7 +121,7 @@ Java код реализующий такое преобразование:
 ```
 то результатом будет:
 ```json lines
-{"store_book_0_title":"Sayings of the Century","store_book_0_price":8.95,"store_book_1_title":"Sword of Honour","store_book_1_price":12.99,"store_book_2_title":"Moby Dick","store_book_2_price":8.99,"store_book_3_title":"The Lord of the Rings","store_book_3_price":22.99,"store_bicycle_color":"red","store_bicycle_price":19.95}```
+{"store_book_0_title":"Sayings of the Century","store_book_0_price":8.95,"store_book_1_title":"Sword of Honour","store_book_1_price":12.99,"store_book_2_title":"Moby Dick","store_book_2_price":8.99,"store_book_3_title":"The Lord of the Rings","store_book_3_price":22.99,"store_bicycle_color":"red","store_bicycle_price":19.95}
 ```
 С другими примерами задания схем через внешний JSON файл можно ознакомиться в тестовых классах: `AutoSchemaTest` и `AutoSchemaEveryLineTest` 
 
@@ -133,11 +135,11 @@ Java код реализующий такое преобразование:
     - `class` - класс фильтрации, должен наследовать интерфейс `Filter`
       - `Exist` - если описанный JsonPath сущетвует, то документ будет обработан
       - `NotExist` - если описанный JsonPath сущетвует, то документ будет пропущен 
-- `columns` - массив объектов, список колонок. Колонки имеют иерархическую структуру. В итоговую таблицу будут выведены только листовые колонки
+- `columnResults` - массив объектов, список колонок. Колонки имеют иерархическую структуру. В итоговую таблицу будут выведены только листовые колонки
   - `name` - строка имя колонки, используется для именования полей в результирующем документе
   - `path` - строка JsonPath для получения значение колонки из документа. Путь всегда указывается относительно родительской ноды. Необязательное поле, если отсутствует, то в качестве пути будет использовано значение из поля name. Важное замечание: если элемент содержит массив объектов, то следует указать явно через JsonPath (например, выбор всех объектов массива '[*]') 
   - `fullname` - boolean, определяет правило именования колонки в итоговой таблице.
-    - `false` – имя колонки будет сформировано конкатенацией имён всех родительских columns, в естественном порядке (используется по умолчанию) 
+    - `false` – имя колонки будет сформировано конкатенацией имён всех родительских columnResults, в естественном порядке (используется по умолчанию) 
     - `true`, имя колонки будет совпадат со значением в name. 
   - `skipJsonIfEmpty` - boolean, позволяет пропустить преобразование документа, если в нем нет такого поля. 
     - `true` – пропущенный документ не будет выведен в итоговую таблицу. 
@@ -152,7 +154,7 @@ Java код реализующий такое преобразование:
         - `pattern` - паттерн даты
       - `ToLong` - преобразование в Long число
       - `ToString` – преобразование в String
-  - `columns` - массив объектов column, список вложенных колонок.
+  - `columnResults` - массив объектов column, список вложенных колонок.
   
 ### Пример описания JSON схемы 
 Ниже приведена схема, которая выводит в результат только те строки у которых есть поле "isbn", а также переопределяет наименование цен книг с полного пути "store_book_price" на просто "price", причем значение поля преобразовано в строку.
@@ -160,13 +162,13 @@ Java код реализующий такое преобразование:
 {
   "name": "Example schema",
   "version": "1.0",
-  "columns": [
+  "columnResults": [
     {
       "name": "store",
-      "columns": [
+      "columnResults": [
         {
           "name": "book",
-          "columns": [
+          "columnResults": [
             {"name": "type", "path": "category"},
             {"name": "author"},
             {"name": "title"},
@@ -229,7 +231,7 @@ Java код реализующий такое преобразование:
 За работу с командной строкой отвечает класс `App`
 Для его использования необходимо создать bash файл
 ```shell
-java -jar "$( dirname -- "${BASH_SOURCE[0]}" )"/jflat.jar "$@"
+java -jar "$( dirname -- "${BASH_SOURCE[0]}" )"/jsonflat.jar "$@"
 ```
 Утилита поддерживает прием и передачу данных через стандартный input/output потоки.
 Также поддерживается работа с log файлами, каждая линяя которых будет обрезаться до первого символа `[` или `{`.
@@ -251,7 +253,7 @@ java -jar "$( dirname -- "${BASH_SOURCE[0]}" )"/jflat.jar "$@"
 
 Пример использования:
 ```shell
-cat example.json > jflat store_book_title store_book_price store_bicycle*
+cat example.json > jsonflat store_book_title store_book_price store_bicycle*
 {"store_book_title":"Sayings of the Century","store_book_price":8.95,"store_bicycle_color":"red","store_bicycle_price":19.95}
 {"store_book_title":"Sword of Honour","store_book_price":12.99,"store_bicycle_color":"red","store_bicycle_price":19.95}, {"store_book_title":"Moby Dick","store_book_price":8.99,"store_bicycle_color":"red","store_bicycle_price":19.95}
 {"store_book_title":"The Lord of the Rings","store_book_price":22.99,"store_bicycle_color":"red","store_bicycle_price":19.95}

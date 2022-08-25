@@ -1,7 +1,6 @@
 package io.github.jsonflat.model;
 
 import lombok.AllArgsConstructor;
-import lombok.Value;
 
 import java.util.Iterator;
 import java.util.LinkedList;
@@ -24,43 +23,42 @@ import java.util.List;
  * @author Evgeniy Chukanov
  */
 
-@Value
+@lombok.Value
 @AllArgsConstructor
-public class CompositeCell implements Cell, Iterable<RowValue> {
-	List<RowValue> values;
+public class CompositeValue implements Value, Iterable<Cell> {
+	List<Cell> values;
 
-	public Iterator<RowValue> iterator() {
+	public Iterator<Cell> iterator() {
 		return new ColumnsIterator(values);
-
 	}
 
 	@Override
 	public boolean isEmpty() {
-		for (RowValue nv : this) {
-			if (!(nv.getCell().isEmpty())) return false;
+		for (Cell nv : this) {
+			if (!(nv.getValue().isEmpty())) return false;
 		}
 		return true;
 	}
 
 	@Override
 	public boolean isRequired() {
-		for (RowValue nv : this) {
-			if (nv.getCell().isRequired()) return true;
+		for (Cell nv : this) {
+			if (nv.getValue().isRequired()) return true;
 		}
 		return false;
 	}
 
-	private static class ColumnsIterator implements Iterator<RowValue> {
-		LinkedList<Iterator<RowValue>> stack;
+	private static class ColumnsIterator implements Iterator<Cell> {
+		LinkedList<Iterator<Cell>> stack;
 
-		public ColumnsIterator(Iterable<RowValue> iterable) {
+		public ColumnsIterator(Iterable<Cell> iterable) {
 			this.stack = new LinkedList<>();
 			stack.push(iterable.iterator());
 		}
 
 		@Override
 		public boolean hasNext() {
-			Iterator<RowValue> currentIterator = stack.peek();
+			Iterator<Cell> currentIterator = stack.peek();
 			if (currentIterator == null) return false;
 			if (currentIterator.hasNext()) {
 				return true;
@@ -71,12 +69,12 @@ public class CompositeCell implements Cell, Iterable<RowValue> {
 		}
 
 		@Override
-		public RowValue next() {
-			Iterator<RowValue> currentIterator = stack.peek();
+		public Cell next() {
+			Iterator<Cell> currentIterator = stack.peek();
 			if (currentIterator == null) return null;
-			RowValue value = currentIterator.next();
-			if (value.getCell() instanceof CompositeCell) {
-				stack.push(((CompositeCell) value.getCell()).getValues().iterator());
+			Cell value = currentIterator.next();
+			if (value.getValue() instanceof CompositeValue) {
+				stack.push(((CompositeValue) value.getValue()).getValues().iterator());
 				return next();
 			} else {
 				return value;

@@ -1,6 +1,10 @@
 package io.github.jsonflat.model;
 
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import lombok.AllArgsConstructor;
+
 import java.io.Serializable;
+import java.util.List;
 
 /**
  * Center of Financial Technologies
@@ -19,8 +23,31 @@ import java.io.Serializable;
  * @author Evgeniy Chukanov
  */
 
-public interface Cell extends Serializable {
-	boolean isEmpty();
+@lombok.Value
+@AllArgsConstructor
+public class Cell implements Serializable {
+	String name;
+	Value value;
 
-	boolean isRequired();
+	public boolean writeToNode(ObjectNode node) {
+		if (value instanceof CompositeValue) {
+			for (Cell nv : (CompositeValue) value) {
+				if (!nv.writeToNode(node)) {
+					return false;
+				}
+			}
+		} else {
+			if (value.isEmpty()) {
+				return !value.isRequired();
+			} else {
+				node.set(getName(),  ((JsonValue) value).getValue());
+				return true;
+			}
+		}
+		return true;
+	}
+
+	public static boolean isNotEmptyRow(List<Cell> list) {
+		return list.stream().map(Cell::getValue).filter(Value::isEmpty).count() != list.size();
+	}
 }

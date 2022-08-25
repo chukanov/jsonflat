@@ -11,7 +11,6 @@ import io.github.jsonflat.schema.Schema;
 import io.github.jsonflat.utils.CartesianProduct;
 import io.github.jsonflat.utils.StringUtils;
 import io.github.jsonflat.model.*;
-import io.github.jsonflat.model.*;
 
 import java.io.Serializable;
 import java.util.*;
@@ -41,129 +40,65 @@ public class FlatTransformer implements Serializable {
 		this.transformScheme = transformScheme;
 	}
 
+	/**
+	 * Transforms Json document to list of flat Json documents according to scheme
+	 * @param document json to transformation
+	 * @return list of flat Json documents
+	 */
+
 	public List<JsonNode> transform(JsonNode document) {
-		List<Column> columns = new ArrayList<>();
+		List<ColumnResult> columnResults = new ArrayList<>();
 		for (Schema.Column columnScheme : transformScheme) {
 			try {
-				Column c = eval(document, columnScheme, null);
-				columns.add(c);
-			} catch (StopRecursionException ex) {
-				columns.clear();
+				ColumnResult c = eval(document, columnScheme, null);
+				columnResults.add(c);
+			} catch (StopTransformationRuntimeException ex) {
+				columnResults.clear();
 				break;
 			}
 		}
-		List<List<RowValue>> rowList = cartesian(columns);
+		List<List<Cell>> rowList = cartesian(columnResults);
 		List<JsonNode> result = new ArrayList<>(rowList.size());
-		rowList.stream()
-				//filter null-only rows
-				.filter(
-						list ->
-								list.stream().map(RowValue::getCell).filter(Cell::isEmpty).count() != list.size()
-				).forEach(
-						//transform row to JsonNode
-						row -> {
-							ObjectNode e = JsonNodeFactory.instance.objectNode();
-							boolean addRowToResult = true;
-							for (RowValue v : row) {
-								if (v.getCell() instanceof CompositeCell) {
-									for (RowValue nv : (CompositeCell) v.getCell()) {
-										addRowToResult = applyRowValue(nv, e);
-										if (!addRowToResult) {
-											break;
-										}
-									}
-								} else {
-									addRowToResult = applyRowValue(v, e);
-								}
-								if (!addRowToResult) {
-									break;
-								}
-							}
-							if (addRowToResult) {
-								result.add(e);
-							}
-						}
-				);
+		for (List<Cell> list: rowList) {
+			if (Cell.isNotEmptyRow(list)) {
+				ObjectNode e = JsonNodeFactory.instance.objectNode(); //transform cell to JsonNode
+				boolean addRowToResult = true;
+				for (Cell v : list) {
+					if (!v.writeToNode(e)) {
+						addRowToResult = false;
+						break;
+					}
+				}
+				if (addRowToResult) {
+					result.add(e);
+				}
+			}
+		}
 		return result;
 	}
 
-	private boolean applyRowValue(RowValue v, ObjectNode node) {
-		Cell cell = v.getCell();
-		if (cell.isEmpty()) {
-			return !cell.isRequired();
-		} else {
-			JsonNode value = ((JsonCell) cell).getValue();
-			node.set(v.getName(), value);
-		}
-		return true;
-	}
-
-	private List<Cell> processLeafs(Collection<JsonNode> jsonPathValues, Schema.Column columnScheme, String name) {
-		Converter converter = columnScheme.getConverter();
-		List<JsonNode> convertedNodes = jsonPathValues.stream()
-				.map(converter::convert)
-				.collect(Collectors.toList());
-		switch (columnScheme.getGroup()) {
-			case ARRAY:
-				if (convertedNodes.size() == 1)
-					return Collections.singletonList(new JsonCell(convertedNodes.get(0), columnScheme.isSkipRowIfEmpty()));
-				ArrayNode arrayNode = JsonNodeFactory.instance.arrayNode();
-				convertedNodes.forEach(arrayNode::add);
-				return Collections.singletonList(new JsonCell(arrayNode, columnScheme.isSkipRowIfEmpty()));
-			case CONCAT:
-				if (convertedNodes.size() == 1)
-					return Collections.singletonList(new JsonCell(convertedNodes.get(0), columnScheme.isSkipRowIfEmpty()));
-				return Collections.singletonList(
-						new JsonCell(
-								new TextNode(convertedNodes.stream().map(JsonNode::asText).collect(Collectors.joining(Schema.GROUP))),
-								columnScheme.isSkipRowIfEmpty()
-						)
-				);
-			case COLUMNS:
-				List<RowValue> rowValues = new ArrayList<>(convertedNodes.size());
-				for (int i = 0; i < convertedNodes.size(); i++) {
-					rowValues.add(
-							new RowValue(
-									name + columnScheme.getSchema().getDelimiter() + i,
-									new JsonCell(convertedNodes.get(i), columnScheme.isSkipRowIfEmpty())
-							)
-					);
-				}
-				return Collections.singletonList(new CompositeCell(rowValues));
-			case NO_GROUP:
-				if (convertedNodes.size() == 1)
-					return Collections.singletonList(new JsonCell(convertedNodes.get(0), columnScheme.isSkipRowIfEmpty()));
-				return convertedNodes.stream()
-						.map(j -> new JsonCell(j, columnScheme.isSkipRowIfEmpty()))
-						.collect(Collectors.toList());
-		}
-		return Collections.emptyList();
-	}
-
-	private Column eval(JsonNode element, Schema.Column columnScheme, String parentName) {
-		final Column result = new Column();
+	private ColumnResult eval(JsonNode element, Schema.Column columnScheme, String parentName) {
+		final ColumnResult result = new ColumnResult();
 		result.setName(columnScheme.getFullname(parentName));
-		String path =
-				StringUtils.isNotBlank(columnScheme.getPath()) ?
+		String path = StringUtils.isNotBlank(columnScheme.getPath()) ?
 						columnScheme.getPath()
 						: columnScheme.getName();
-		ArrayNode jsonPathValues =
-				(element != null && path != null) ?
-						JsonPath.read(element, path) :
-						null;
+		ArrayNode jsonPathValues = (element != null && path != null) ?
+						JsonPath.read(element, path)
+						: null;
 		if (jsonPathValues == null || jsonPathValues.size() == 0) {
 			if (columnScheme.isSkipJsonIfEmpty()) {
-				throw new StopRecursionException();
+				throw new StopTransformationRuntimeException();
 			}
 			if (columnScheme.getColumns().size() == 0) {
-				result.setCells(Collections.singletonList(new NullCell(columnScheme.isSkipRowIfEmpty())));
+				result.setValues(Collections.singletonList(new NullValue(columnScheme.isSkipRowIfEmpty())));
 			} else {
-				List<Column> subColumns = new ArrayList<>(columnScheme.getColumns().size());
+				List<ColumnResult> subColumnResults = new ArrayList<>(columnScheme.getColumns().size());
 				for (Schema.Column subColumnScheme : columnScheme.getColumns()) {
-					Column c = eval(null, subColumnScheme, result.getName());
-					subColumns.add(c);
+					ColumnResult c = eval(null, subColumnScheme, result.getName());
+					subColumnResults.add(c);
 				}
-				result.setCells(toCompositeCells(subColumns));
+				result.setValues(toCompositeValues(subColumnResults));
 				return result;
 			}
 			return result;
@@ -172,37 +107,63 @@ public class FlatTransformer implements Serializable {
 		jsonPathValues.forEach(jpathResult::add);
 		//Processing leaf of json tree
 		if (columnScheme.getColumns().isEmpty()) {
-			result.getCells().addAll(
+			result.getValues().addAll(
 					processLeafs(jpathResult, columnScheme, result.getName())
 			);
 		} else { //processing middle nodes
-			List<Cell> compositeCells = new ArrayList<>();
-			List<Column> subColumns = new ArrayList<>(columnScheme.getColumns().size()); //if group by columns - create common list of sub columns
+			if (columnScheme.getGroup() == Schema.GroupPolicy.COLUMNS) {
+				List<ColumnResult> subColumnResults = new ArrayList<>(columnScheme.getColumns().size()); //if group by columns - create common list of sub columns
+				int i = 0;
+				for (JsonNode subElement : jpathResult) {
+					String resultColumnName = result.getName() + columnScheme.getSchema().getDelimiter() + i;
+					boolean resultProcessed = false;
+					for (Schema.Column subColumnScheme : columnScheme.getColumns()) {
+						ColumnResult c = eval(subElement, subColumnScheme, resultColumnName);
+						if (!c.isEmpty()) {
+							subColumnResults.add(c);
+							resultProcessed = true;
+						}
+					}
+					if (!resultProcessed) { //Filter object nodes (if it's not processed, then it's not defined in schema)
+						if (!subElement.isObject()) {
+							subColumnResults.add(
+									new ColumnResult(resultColumnName,
+											processLeafs(Collections.singletonList(subElement), columnScheme, resultColumnName)
+									)
+							);
+						}
+					}
+					i++;
+				}
+			}
+
+			List<Value> compositeValues = new ArrayList<>();
+			List<ColumnResult> subColumnResults = new ArrayList<>(columnScheme.getColumns().size()); //if group by columns - create common list of sub columns
 			int i = 0;
 			for (JsonNode subElement : jpathResult) {
 				String resultColumnName = columnScheme.getGroup() == Schema.GroupPolicy.COLUMNS ?
 						result.getName() + columnScheme.getSchema().getDelimiter() + i
 						: result.getName();
 				if (columnScheme.getGroup() != Schema.GroupPolicy.COLUMNS) {
-					subColumns = new ArrayList<>(columnScheme.getColumns().size()); //if group by columns - create list of sub columns for each element
+					subColumnResults = new ArrayList<>(columnScheme.getColumns().size()); //if group by columns - create list of sub columns for each element
 				}
 				boolean resultProcessed = false;
 				for (Schema.Column subColumnScheme : columnScheme.getColumns()) {
-					Column c = eval(subElement, subColumnScheme, resultColumnName);
-					if (!c.isEmpty() || subColumnScheme.isSkipRowIfEmpty()) {
-						subColumns.add(c);
+					ColumnResult c = eval(subElement, subColumnScheme, resultColumnName);
+					if (!c.isEmpty()) {
+						subColumnResults.add(c);
 						resultProcessed = true;
 					}
 				}
-				if (!resultProcessed) { //Filter object nodes (if it's not processed, than it's not defined in schema)
+				if (!resultProcessed) { //Filter object nodes (if it's not processed, then it's not defined in schema)
 					if (!subElement.isObject()) {
 						if (columnScheme.getGroup() != Schema.GroupPolicy.COLUMNS) {
-							compositeCells.addAll(
+							 compositeValues.addAll(
 									processLeafs(Collections.singletonList(subElement), columnScheme, resultColumnName)
 							);
 						} else {
-							subColumns.add(
-									new Column(resultColumnName,
+							subColumnResults.add(
+									new ColumnResult(resultColumnName,
 											processLeafs(Collections.singletonList(subElement), columnScheme, resultColumnName)
 									)
 							);
@@ -210,42 +171,84 @@ public class FlatTransformer implements Serializable {
 					}
 				} else if (columnScheme.getGroup() != Schema.GroupPolicy.COLUMNS) {
 					//if group policy is not COLUMNS add result for each element
-					compositeCells.addAll(toCompositeCells(subColumns));
+					compositeValues.addAll(toCompositeValues(subColumnResults));
 				}
 				i++;
 			}
 			if (columnScheme.getGroup() == Schema.GroupPolicy.COLUMNS) {
-				compositeCells.addAll(toCompositeCells(subColumns));
+				compositeValues.addAll(toCompositeValues(subColumnResults));
 			}
-			result.getCells().addAll(compositeCells);
+			result.getValues().addAll(compositeValues);
 		}
 		return result;
 	}
 
-	private List<List<RowValue>> cartesian(List<Column> subcolumns) {
+	private List<Value> processLeafs(Collection<JsonNode> jsonPathValues, Schema.Column columnScheme, String name) {
+		Converter converter = columnScheme.getConverter();
+		List<JsonNode> convertedNodes = jsonPathValues.stream()
+				.map(converter::convert)
+				.collect(Collectors.toList());
+		switch (columnScheme.getGroup()) {
+			case ARRAY:
+				if (convertedNodes.size() == 1)
+					return Collections.singletonList(new JsonValue(convertedNodes.get(0), columnScheme.isSkipRowIfEmpty()));
+				ArrayNode arrayNode = JsonNodeFactory.instance.arrayNode();
+				convertedNodes.forEach(arrayNode::add);
+				return Collections.singletonList(new JsonValue(arrayNode, columnScheme.isSkipRowIfEmpty()));
+			case CONCAT:
+				if (convertedNodes.size() == 1)
+					return Collections.singletonList(new JsonValue(convertedNodes.get(0), columnScheme.isSkipRowIfEmpty()));
+				return Collections.singletonList(
+						new JsonValue(
+								new TextNode(convertedNodes.stream().map(JsonNode::asText).collect(Collectors.joining(Schema.GROUP))),
+								columnScheme.isSkipRowIfEmpty()
+						)
+				);
+			case COLUMNS:
+				List<Cell> cells = new ArrayList<>(convertedNodes.size());
+				for (int i = 0; i < convertedNodes.size(); i++) {
+					cells.add(
+							new Cell(
+									name + columnScheme.getSchema().getDelimiter() + i,
+									new JsonValue(convertedNodes.get(i), columnScheme.isSkipRowIfEmpty())
+							)
+					);
+				}
+				return Collections.singletonList(new CompositeValue(cells));
+			case NO_GROUP:
+				if (convertedNodes.size() == 1)
+					return Collections.singletonList(new JsonValue(convertedNodes.get(0), columnScheme.isSkipRowIfEmpty()));
+				return convertedNodes.stream()
+						.map(j -> new JsonValue(j, columnScheme.isSkipRowIfEmpty()))
+						.collect(Collectors.toList());
+		}
+		return Collections.emptyList();
+	}
+
+	private List<List<Cell>> cartesian(List<ColumnResult> subcolumns) {
 		return CartesianProduct.cartesianProduct(
 				subcolumns.stream()
-						.map(Column::toRowValues)
+						.map(ColumnResult::toCells)
 						.collect(Collectors.toList())
 		);
 	}
 
-	private List<Cell> toCompositeCells(List<Column> subcolumns) {
-		List<List<RowValue>> rowList = cartesian(subcolumns);
-		List<Cell> compositeCells = new ArrayList<>(rowList.size());
+	private List<Value> toCompositeValues(List<ColumnResult> subcolumns) {
+		List<List<Cell>> rowList = cartesian(subcolumns);
+		List<Value> compositeValues = new ArrayList<>(rowList.size());
 		if (rowList.size() > 0) {
 			int rowLength = rowList.get(0).size();
-			for (List<RowValue> row : rowList) {
-				List<RowValue> rowColumnValues = new ArrayList<>(rowLength);
+			for (List<Cell> cell : rowList) {
+				List<Cell> cellColumnValues = new ArrayList<>(rowLength);
 				for (int i = 0; i < rowLength; i++) {
-					rowColumnValues.add(row.get(i));
+					cellColumnValues.add(cell.get(i));
 				}
-				compositeCells.add(new CompositeCell(rowColumnValues));
+				compositeValues.add(new CompositeValue(cellColumnValues));
 			}
 		}
-		return compositeCells;
+		return compositeValues;
 	}
 
-	private static class StopRecursionException extends RuntimeException {
+	private static class StopTransformationRuntimeException extends RuntimeException {
 	}
 }

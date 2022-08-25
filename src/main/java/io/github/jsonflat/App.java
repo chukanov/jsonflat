@@ -65,35 +65,32 @@ public class App {
 						"Any other parameters define result JSON column set.");
 				return;
 			}
-			if (config.getInputPath().isPresent()) {
-				lines = Files.lines(Paths.get(config.getInputPath().get()));
+			if (config.getInputPath() != null) {
+				lines = Files.lines(Paths.get(config.getInputPath()));
 			} else {
-				lines = new BufferedReader(
-						new InputStreamReader(
-								System.in,
-								config.encoding.orElse("utf8")
-						)
-				).lines();
+				lines = new BufferedReader(new InputStreamReader(System.in, config.encoding)).lines();
 			}
-			if (config.getOutputPath().isPresent()) {
-				out = new PrintStream(config.getOutputPath().get());
+			if (config.getOutputPath() != null) {
+				out = new PrintStream(config.getOutputPath());
 			} else {
 				out = System.out;
 			}
 			SchemaHolder holder = new SchemaHolder();
-			lines.map(StringUtils::preprocessLog).forEachOrdered(line -> {
+			lines
+				.map(StringUtils::preprocessLog)
+				.forEachOrdered(line -> {
 				try {
 					ObjectNode json = (ObjectNode) Transformer.MAPPER.readTree(line);
 					if (holder.transformer == null) {
 						Schema schema;
-						if (config.getSchemePath().isPresent()) {
-							String schemaString = new String(Files.readAllBytes(Paths.get(config.getSchemePath().get())));
+						if (config.getSchemePath() != null) {
+							String schemaString = new String(Files.readAllBytes(Paths.get(config.getSchemePath())));
 							schema = JsonSchemaFactory.builder().build().generate(schemaString);
 						} else {
 							schema = AutoSchemaFactory.builder()
 									.columnStringFilters(config.getColumns())
-									.filterRowsPath(config.getJsonFilter().orElse(null))
-									.delimiter(config.delimiter.orElse(Schema.DEFAULT_DELIMITER))
+									.filterRowsPath(config.getJsonFilter())
+									.delimiter(config.delimiter)
 									.primitiveArraysGroup(
 											config.explodeSimpleArrays ?
 													Schema.GroupPolicy.NO_GROUP :
@@ -113,11 +110,11 @@ public class App {
 							out.println(JsonUtils.writeCsvHeader(holder.columnNames, CSV_DELIMITER));
 						}
 						holder.transformer = new Transformer(schema);
-					} else if (!config.getSchemePath().isPresent() && !config.schemaByFirstLine) {
+					} else if (config.getSchemePath() == null && !config.schemaByFirstLine) {
 						Schema newSchema = AutoSchemaFactory.builder()
 								.columnStringFilters(config.getColumns())
-								.filterRowsPath(config.getJsonFilter().orElse(null))
-								.delimiter(config.delimiter.orElse(Schema.DEFAULT_DELIMITER))
+								.filterRowsPath(config.getJsonFilter())
+								.delimiter(config.delimiter)
 								.primitiveArraysGroup(
 										config.explodeSimpleArrays ?
 												Schema.GroupPolicy.NO_GROUP :
@@ -134,15 +131,11 @@ public class App {
 						holder.transformer.getSchema().merge(newSchema);
 					}
 					if (config.csv) {
-						holder.transformer.transform(json)
-								.stream()
-								.map(j -> JsonUtils.writeCsvValue(holder.columnNames, j, CSV_DELIMITER))
-								.forEach(out::println);
+						for (JsonNode node : holder.transformer.transform(json))
+							out.println(JsonUtils.writeCsvValue(holder.columnNames, node, CSV_DELIMITER));
 					} else {
-						holder.transformer.transform(json)
-								.stream()
-								.map(JsonNode::toString)
-								.forEach(out::println);
+						for (JsonNode node : holder.transformer.transform(json))
+							out.println(node.toString());
 					}
 				} catch (IOException e) {
 					//skip, do nothing
@@ -157,13 +150,13 @@ public class App {
 
 	@Getter
 	static class Config {
-		Optional<String> inputPath;
-		Optional<String> outputPath;
+		String inputPath;
+		String outputPath;
 		List<String> columns = Collections.emptyList();
-		Optional<String> jsonFilter;
-		Optional<String> schemePath;
-		Optional<String> delimiter;
-		Optional<String> encoding;
+		String jsonFilter;
+		String schemePath;
+		String delimiter = Schema.DEFAULT_DELIMITER;
+		String encoding = "utf8";
 		boolean schemaByFirstLine = false;
 		boolean help;
 		boolean csv;
@@ -175,27 +168,30 @@ public class App {
 			Config config = new Config();
 			List<String> params = new ArrayList<>(Arrays.asList(args));
 			config.help = params.remove("-h");
-			config.inputPath = popParameter("-i", params);
-			config.inputPath.ifPresent(
-					path -> {
-						if (!Files.isReadable(Paths.get(config.inputPath.get())))
-							throw new RuntimeException("can't read input file " + config.inputPath.get());
+			popParameter("-i", params).ifPresent(
+				v-> {
+					config.inputPath = v;
+					if (!Files.isReadable(Paths.get(v))) {
+						throw new RuntimeException("can't read input file " + v);
 					}
+				}
+		  );
+			popParameter("-o", params).ifPresent(v -> config.outputPath = v);
+			popParameter("-f", params).ifPresent(
+				v -> {
+					config.jsonFilter = v;
+					JsonPath.compile(config.jsonFilter, p -> true); //check on error
+				}
 			);
-			config.outputPath = popParameter("-o", params);
-
-			config.jsonFilter = popParameter("-f", params);
-			config.jsonFilter.ifPresent(s -> JsonPath.compile(s, p -> true));
-
-			config.schemePath = popParameter("-s", params);
-			config.schemePath.ifPresent(
-					path -> {
-						if (!Files.isReadable(Paths.get(config.schemePath.get())))
-							throw new RuntimeException("can't read scheme file" + config.schemePath.get());
-					}
+			popParameter("-s", params).ifPresent(
+				v -> {
+					config.schemePath = v;
+					if (!Files.isReadable(Paths.get(v)))
+						throw new RuntimeException("can't read scheme file" + v);
+				}
 			);
-			config.delimiter = popParameter("-d", params);
-			config.encoding = popParameter("-e", params);
+			popParameter("-d", params).ifPresent(v -> config.delimiter = v);
+			popParameter("-e", params).ifPresent(v -> config.encoding = v);
 			config.schemaByFirstLine = params.remove("-n");
 			config.csv = params.remove("-csv");
 			config.explodeSimpleArrays = params.remove("-a");
